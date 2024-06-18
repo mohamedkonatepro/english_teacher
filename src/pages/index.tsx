@@ -21,8 +21,6 @@ const Home = () => {
     };
   }, []);
 
-  console.log(user)
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/');

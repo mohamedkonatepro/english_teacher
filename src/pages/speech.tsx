@@ -29,11 +29,12 @@ const Speech = () => {
           'Content-Type': 'multipart/form-data',
         },
       });
-      console.log(response)
-      // const url = URL.createObjectURL(new Blob([response.data], { type: 'audio/mpeg' }));
-      const timestamp = new Date().getTime();
-      setAudioUrl(`${response.data.audioUrl}?t=${timestamp}`);
-      setText(response.data.text);
+      const { text, audio } = response.data;
+      setText(text);
+
+      const audioBlob = new Blob([Uint8Array.from(atob(audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(audioUrl);
     } catch (error: any) {
       setError('Failed to generate speech');
       setAudioUrl(null);

@@ -38,44 +38,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const file = Array.isArray(files.audio) ? files.audio[0] : files.audio;
     const filePath = (file as formidable.File).filepath;
 
-    const transcriptionPromise = openai.audio.transcriptions.create({
+    const transcriptionResponse = await openai.audio.transcriptions.create({
       file: fs.createReadStream(filePath),
       model: "whisper-1",
     });
 
-    const threadPromise = await openai.beta.threads.create();
-
-    const [transcriptionResponse, thread] = await Promise.all([transcriptionPromise, threadPromise]);
-
-
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: transcriptionResponse.text
+    const completion = await openai.chat.completions.create({
+      messages: [{"role": "system", "content": "Tu peux agir comme mon professeur d'anglais et pratiquer l'anglais avec moi. La seul choses que tu est capable de faire c'est d'enseigner l'anglais, tu ne peux rien faire d'autres par n'importe quelle moyen que ça soit."},
+          {"role": "user", "content": transcriptionResponse.text}],
+      model: "gpt-3.5-turbo",
     });
 
-    const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID as string,
-    });
-
-    let responseMessage = '';
-
-    if (run.status === 'completed') {
-      const messages = await openai.beta.threads.messages.list(run.thread_id);
-      for (const msg of messages.data.reverse()) {
-        if (msg.role === 'assistant') {
-          if (Array.isArray(msg.content)) {
-            msg.content.forEach(content => {
-              if (content.type === 'text') {
-                responseMessage += `${content.text.value}\n`;
-              }
-            });
-          } else if (typeof msg.content === 'string') {
-            responseMessage += `${msg.content}\n`;
-          }
-        }
-      }
-    }
-
+    const responseMessage = completion.choices[0].message.content || "";
 
     const mp3 = await openai.audio.speech.create({
       model: 'tts-1',
@@ -83,21 +57,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       input: responseMessage,
     });
 
-    console.log('responseMessage :::: ', responseMessage)
-    // const buffer = Buffer.from(await mp3.arrayBuffer());
-
-    // res.setHeader('Content-Type', 'audio/mpeg');
-    // res.setHeader('Content-Disposition', 'attachment; filename="speech.mp3"');
-    // res.send(buffer);
-    // res.status(200).json({ text: responseMessage });
-
-
-    const speechFile = path.resolve('./public/speech.mp3');
     const buffer = Buffer.from(await mp3.arrayBuffer());
-    await fs.promises.writeFile(speechFile, buffer);
+    const base64Audio = buffer.toString('base64');
 
-    const audioUrl = '/speech.mp3';
-    res.status(200).json({ audioUrl, text: responseMessage });
+    res.status(200).json({ text: responseMessage, audio: base64Audio });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: 'Internal Server Error', error: error.message });
